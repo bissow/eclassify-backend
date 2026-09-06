@@ -39,6 +39,6 @@ composer.lock
 .cspell
 .claude
 
-storage/framework/sessions/*
-storage/framework/views/*
-bootstrap/cache/*
+storage/framework/sessions/*.php
+storage/framework/views/*.blade.php
+bootstrap/cache/*.php
