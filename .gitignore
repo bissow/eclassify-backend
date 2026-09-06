@@ -38,3 +38,7 @@ composer.lock
 #other
 .cspell
 .claude
+
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*

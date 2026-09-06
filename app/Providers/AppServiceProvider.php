@@ -5,6 +5,7 @@ namespace App\Providers;
 use Dedoc\Scramble\Scramble;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,6 +26,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // 2. Force HTTPS if in production or behind Dokploy
+        // if (config('app.env') === 'production' || isset($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+        //     URL::forceScheme('https');
+        // }
+
         Schema::defaultStringLength(191);
 
         // Skip integrity check during console commands
