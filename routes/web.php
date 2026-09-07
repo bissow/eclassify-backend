@@ -28,6 +28,7 @@ use App\Http\Controllers\SeoSettingController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\SliderController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\StoreController;
 use App\Http\Controllers\SystemUpdateController;
 use App\Http\Controllers\TipController;
 use App\Http\Controllers\UserVerificationController;
@@ -296,6 +297,10 @@ Route::group(['middleware' => ['auth', 'language']], static function () {
         Route::get('/', [SellerController::class, 'reportsIndex'])->name('index');
         Route::get('/show', [SellerController::class, 'showReports'])->name('show');
     });
+
+    /*** Store Module : START ***/
+    Route::resource('stores', StoreController::class);
+    /*** Store Module : END ***/
 
     /*** Setting Module : START ***/
     Route::group(['prefix' => 'settings'], static function () {
