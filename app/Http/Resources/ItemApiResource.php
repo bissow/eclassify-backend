@@ -210,11 +210,17 @@ class ItemApiResource extends ResourceCollection
                     $row['clicks'] = $item->clicks;
                     $row['translations'] = $item->relationLoaded('translations') ? $item->translations : null;
                     $row['custom_fields'] = $item->relationLoaded('item_custom_field_values') ? $this->buildCustomFields($item, $currentLangId, $defaultLangId) : [];
-                    $row['active_promotions'] = $item->active_promotions;
                 } else {
                     $row['is_liked'] = $isLiked;
                 }
+
+                $activePromotions = $item->active_promotions;
+                $row['active_promotions'] = $activePromotions;
+                $row['active_promotion_item'] = !empty($activePromotions['sales']) ? $activePromotions['sales'][0] : null;
+                $row['is_spotlight'] = $activePromotions['is_spotlight'] ?? false;
+                $row['is_top_ad'] = $activePromotions['is_top_ad'] ?? false;
             } else {
+                $activePromotions = $item->active_promotions;
                 $row = [
                     'id' => $item->id,
                     'slug' => $item->slug,
@@ -227,6 +233,10 @@ class ItemApiResource extends ResourceCollection
                     'is_liked' => $isLiked,
                     'published_at' => Carbon::parse($item->published_at),
                     'is_my_listing' => (bool) ($item->user_id === Auth::guard('sanctum')->id()),
+                    'active_promotions' => $activePromotions,
+                    'active_promotion_item' => !empty($activePromotions['sales']) ? $activePromotions['sales'][0] : null,
+                    'is_spotlight' => $activePromotions['is_spotlight'] ?? false,
+                    'is_top_ad' => $activePromotions['is_top_ad'] ?? false,
                 ];
                 if ($this->myItem) {
                     $row['status'] = $item->status;
@@ -235,7 +245,6 @@ class ItemApiResource extends ResourceCollection
                     $row['views'] = $item->clicks;
                     $row['likes'] = $item->favourites->count();
                     $row['is_my_listing'] = true;
-                    $row['active_promotions'] = $item->active_promotions;
                 }
                 if ($item->relationLoaded('user')) {
                     $row['user'] = $item->user;

@@ -584,7 +584,10 @@ class ItemApiController extends BaseApiController
                     'itemVideo',
                     'job_applications',
                     'review',
-                    'item_custom_field_values.custom_field.translations'
+                    'item_custom_field_values.custom_field.translations',
+                    'active_promotion_items.promotion.campaign',
+                    'active_promotion_items.promotion.translations',
+                    'active_ad_promotions'
                 )->when($request->id, function ($query) use ($request) {
                     $query->where('id', $request->id);
                 })
@@ -616,7 +619,16 @@ class ItemApiController extends BaseApiController
             $limit = (int) ($request->limit ?? 10);
             $page = (int) ($request->page ?? 1);
 
-            $baseQuery = Item::with('category:id,is_job_category', 'translations', 'featured_items', 'currency', 'gallery_images:id,image,item_id,is_default')
+            $baseQuery = Item::with(
+                'category:id,is_job_category',
+                'translations',
+                'featured_items',
+                'currency',
+                'gallery_images:id,image,item_id,is_default',
+                'active_promotion_items.promotion.campaign',
+                'active_promotion_items.promotion.translations',
+                'active_ad_promotions'
+            )
                 ->where('status', 'approved')
                 ->getNonExpiredItems()
                 ->when($request->user_id, function ($query) use ($request) {
@@ -805,7 +817,10 @@ class ItemApiController extends BaseApiController
                     'itemVideo',
                     'job_applications',
                     'review',
-                    'item_custom_field_values.custom_field.translations'
+                    'item_custom_field_values.custom_field.translations',
+                    'active_promotion_items.promotion.campaign',
+                    'active_promotion_items.promotion.translations',
+                    'active_ad_promotions'
                 )->where('user_id', $user->id)
                 ->when($request->id, function ($query) use ($request) {
                     $query->where('id', $request->id);
@@ -828,7 +843,16 @@ class ItemApiController extends BaseApiController
             }
 
             DB::enableQueryLog();
-            $sql = Item::withTrashed()->with('category:id,is_job_category', 'translations', 'featured_items', 'currency', 'gallery_images:id,image,item_id,is_default')
+            $sql = Item::withTrashed()->with(
+                'category:id,is_job_category',
+                'translations',
+                'featured_items',
+                'currency',
+                'gallery_images:id,image,item_id,is_default',
+                'active_promotion_items.promotion.campaign',
+                'active_promotion_items.promotion.translations',
+                'active_ad_promotions'
+            )
                 ->where('user_id', $user->id)
                 ->when($request->status, function ($sql) use ($request) {
                     if (in_array($request->status, ['review', 'approved', 'rejected', 'soft rejected', 'permanent rejected', 'resubmitted'])) {
