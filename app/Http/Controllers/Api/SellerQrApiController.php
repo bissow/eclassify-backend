@@ -105,6 +105,10 @@ class SellerQrApiController extends BaseApiController
                         'has_qr'               => false,
                         'eligible'             => $eligibility['eligible'],
                         'is_eligible'          => $eligibility['is_eligible'],
+                        'can_customize_colors' => (bool)$settings['allow_user_customization'],
+                        'can_customize_logo'   => (bool)$settings['allow_user_logo'],
+                        'can_customize_slug'   => (bool)$settings['allow_user_customization'],
+                        'catalog_base_url'     => $settings['catalog_base_url'] ?: url('/'),
                         'qr_code'              => null,
                         'default_settings'     => $settings,
                         'store'                => $store ? [
@@ -119,15 +123,7 @@ class SellerQrApiController extends BaseApiController
             }
 
             // Generate preview data URIs for fast app rendering
-            $centerLogoPath = null;
-            if ($qrCode->center_logo_type === 'custom' && !empty($qrCode->center_logo)) {
-                $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($qrCode->getRawOriginal('center_logo'));
-            } elseif ($qrCode->center_logo_type === 'store_logo' && $store && !empty($store->logo)) {
-                $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($store->getRawOriginal('logo'));
-            } elseif ($qrCode->center_logo_type === 'platform_logo') {
-                $adminLogo = !empty($settings['center_logo']) ? $settings['center_logo'] : $settings['footer_logo'];
-                $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($adminLogo);
-            }
+            $centerLogoPath = SellerQrCodeService::resolveCenterLogoPath($qrCode, $settings, $store);
 
             $rawSvg = SellerQrCodeService::generateRawQrSvg($qrCode->qr_url, $qrCode->primary_color, 320, $centerLogoPath);
             $qrBase64Svg = 'data:image/svg+xml;base64,' . base64_encode($rawSvg);
@@ -172,6 +168,13 @@ class SellerQrApiController extends BaseApiController
                     'primary_color'             => $qrCode->primary_color,
                     'custom_color'              => $qrCode->primary_color,
                     'secondary_color'           => $qrCode->secondary_color,
+                    'can_customize_colors'      => (bool)$settings['allow_user_customization'],
+                    'can_customize_logo'        => (bool)$settings['allow_user_logo'],
+                    'can_customize_slug'        => (bool)$settings['allow_user_customization'],
+                    'catalog_base_url'          => $settings['catalog_base_url'] ?: ($qrCode ? Str::before($qrCode->qr_url, '/store-qr/') : url('/')),
+                    'badge_text'                => $settings['badge_text'],
+                    'default_footer_text'       => $settings['default_footer_text'],
+                    'footer_logo_url'           => $settings['footer_logo_url'],
                     'center_logo_type'          => $qrCode->center_logo_type,
                     'center_logo'               => $qrCode->center_logo,
                     'center_logo_url'           => $qrCode->center_logo_url,
@@ -482,17 +485,9 @@ class SellerQrApiController extends BaseApiController
                 'Cache-Control'                    => 'no-cache, private',
             ];
 
-            if ($format === 'svg') {
-                $centerLogoPath = null;
-                if ($qrCode->center_logo_type === 'custom' && !empty($qrCode->center_logo)) {
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($qrCode->getRawOriginal('center_logo'));
-                } elseif ($qrCode->center_logo_type === 'store_logo' && $qrCode->store && !empty($qrCode->store->logo)) {
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($qrCode->store->getRawOriginal('logo'));
-                } elseif ($qrCode->center_logo_type === 'platform_logo' || empty($qrCode->center_logo_type)) {
-                    $adminLogo = !empty($settings['center_logo']) ? $settings['center_logo'] : $settings['footer_logo'];
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($adminLogo);
-                }
+            $centerLogoPath = SellerQrCodeService::resolveCenterLogoPath($qrCode, $settings, $qrCode->store);
 
+            if ($format === 'svg') {
                 $svg = SellerQrCodeService::generateRawQrSvg($qrCode->qr_url, $qrCode->primary_color, 600, $centerLogoPath);
                 return response($svg, 200, array_merge($corsHeaders, [
                     'Content-Type'        => 'image/svg+xml',
@@ -501,16 +496,6 @@ class SellerQrApiController extends BaseApiController
             }
 
             if ($format === 'png') {
-                $centerLogoPath = null;
-                if ($qrCode->center_logo_type === 'custom' && !empty($qrCode->center_logo)) {
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($qrCode->getRawOriginal('center_logo'));
-                } elseif ($qrCode->center_logo_type === 'store_logo' && $qrCode->store && !empty($qrCode->store->logo)) {
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($qrCode->store->getRawOriginal('logo'));
-                } elseif ($qrCode->center_logo_type === 'platform_logo' || empty($qrCode->center_logo_type)) {
-                    $adminLogo = !empty($settings['center_logo']) ? $settings['center_logo'] : $settings['footer_logo'];
-                    $centerLogoPath = SellerQrCodeService::resolveLocalImagePath($adminLogo);
-                }
-
                 $png = SellerQrCodeService::generateRawQrPng($qrCode->qr_url, $qrCode->primary_color, 800, $centerLogoPath);
                 return response($png, 200, array_merge($corsHeaders, [
                     'Content-Type'        => 'image/png',

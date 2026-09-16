@@ -198,52 +198,98 @@ class SellerQrCodeService
     }
 
     /**
-     * Generate raw SVG string of the QR code
+     * Resolve the effective local absolute path for the QR center logo
+     */
+    public static function resolveCenterLogoPath(SellerQrCode $qrCode, ?array $settings = null, ?Store $store = null): ?string
+    {
+        $settings = $settings ?: self::getEffectiveSettings();
+        $store = $store ?: ($qrCode->store ?: $qrCode->user?->store);
+        $type = $qrCode->center_logo_type ?: ($settings['default_center_logo_type'] ?? 'platform_logo');
+
+        if ($type === 'none') {
+            return null;
+        }
+
+        if ($type === 'custom' && !empty($qrCode->center_logo)) {
+            $customPath = self::resolveLocalImagePath($qrCode->getRawOriginal('center_logo'));
+            if (!empty($customPath) && File::exists($customPath)) {
+                return $customPath;
+            }
+        }
+
+        if ($type === 'store_logo' && $store && !empty($store->logo)) {
+            $storeLogoPath = self::resolveLocalImagePath($store->getRawOriginal('logo'));
+            if (!empty($storeLogoPath) && File::exists($storeLogoPath)) {
+                return $storeLogoPath;
+            }
+        }
+
+        if ($type === 'platform_logo' || empty($type)) {
+            $adminLogo = !empty($settings['center_logo']) ? $settings['center_logo'] : ($settings['footer_logo'] ?? null);
+            $platformPath = self::resolveLocalImagePath($adminLogo);
+            if (!empty($platformPath) && File::exists($platformPath)) {
+                return $platformPath;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate raw SVG string of the QR code with embedded center logo badge
      */
     public static function generateRawQrSvg(string $url, string $primaryColor = '#00B2CA', int $size = 300, ?string $logoPath = null): string
     {
         [$r, $g, $b] = self::hexToRgb($primaryColor);
 
-        $generator = QrCode::format('svg')
+        $svg = (string) QrCode::format('svg')
             ->size($size)
             ->color($r, $g, $b)
             ->backgroundColor(255, 255, 255)
             ->margin(1)
-            ->errorCorrection('H');
+            ->errorCorrection('H')
+            ->generate($url);
 
         if (!empty($logoPath) && File::exists($logoPath)) {
-            $generator->merge($logoPath, 0.28, true);
-        }
+            $logoData = @file_get_contents($logoPath);
+            if ($logoData) {
+                $ext = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+                $mime = match ($ext) {
+                    'png'         => 'image/png',
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'svg'         => 'image/svg+xml',
+                    'webp'        => 'image/webp',
+                    'gif'         => 'image/gif',
+                    default       => 'image/png',
+                };
+                $logoDataUri = 'data:' . $mime . ';base64,' . base64_encode($logoData);
 
-        return (string) $generator->generate($url);
-    }
+                // Proportional circular badge dimensions matching preview mockup
+                $badgeRadius = round($size * 0.125, 2);
+                $center = round($size / 2, 2);
+                $logoBoxSize = round($badgeRadius * 1.35, 2);
+                $logoX = round($center - ($logoBoxSize / 2), 2);
+                $logoY = round($center - ($logoBoxSize / 2), 2);
 
-    /**
-     * Generate raw PNG binary of the QR code using GD or Imagick
-     */
-    public static function generateRawQrPng(string $url, string $primaryColor = '#00B2CA', int $size = 400, ?string $logoPath = null): string
-    {
-        if (extension_loaded('imagick')) {
-            try {
-                [$r, $g, $b] = self::hexToRgb($primaryColor);
+                $badgeSvg = '  <!-- Embedded QR Center Logo Badge -->
+  <g id="qrCenterLogoBadge">
+    <circle cx="' . $center . '" cy="' . $center . '" r="' . $badgeRadius . '" fill="#ffffff" stroke="' . $primaryColor . '" stroke-width="2.5" />
+    <image href="' . $logoDataUri . '" xlink:href="' . $logoDataUri . '" x="' . $logoX . '" y="' . $logoY . '" width="' . $logoBoxSize . '" height="' . $logoBoxSize . '" preserveAspectRatio="xMidYMid meet" />
+  </g>
+</svg>';
 
-                $generator = QrCode::format('png')
-                    ->size($size)
-                    ->color($r, $g, $b)
-                    ->backgroundColor(255, 255, 255)
-                    ->margin(1)
-                    ->errorCorrection('H');
-
-                if (!empty($logoPath) && File::exists($logoPath)) {
-                    $generator->merge($logoPath, 0.28, true);
-                }
-
-                return (string) $generator->generate($url);
-            } catch (\Throwable $th) {
-                // Fallback to pure GD
+                $svg = preg_replace('/<\/svg>\s*$/i', $badgeSvg, $svg);
             }
         }
 
+        return $svg;
+    }
+
+    /**
+     * Generate raw PNG binary of the QR code using GD with circular badge support
+     */
+    public static function generateRawQrPng(string $url, string $primaryColor = '#00B2CA', int $size = 400, ?string $logoPath = null): string
+    {
         return self::generateQrPngWithGd($url, $primaryColor, $size, $logoPath);
     }
 
@@ -290,15 +336,22 @@ class SellerQrCodeService
                 if ($logoImg) {
                     $lw = imagesx($logoImg);
                     $lh = imagesy($logoImg);
-                    $centerBoxSize = (int)($imgSize * 0.24);
-                    $cx = (int)(($imgSize - $centerBoxSize) / 2);
-                    $cy = (int)(($imgSize - $centerBoxSize) / 2);
 
-                    // Draw white background pill/rectangle with border
-                    imagefilledrectangle($img, $cx - 4, $cy - 4, $cx + $centerBoxSize + 4, $cy + $centerBoxSize + 4, $white);
-                    imagerectangle($img, $cx - 4, $cy - 4, $cx + $centerBoxSize + 4, $cy + $centerBoxSize + 4, $primary);
+                    $center = (int)($imgSize / 2);
+                    $badgeRadius = (int)($imgSize * 0.125);
+                    $borderThickness = max(2, (int)round($imgSize * 0.006));
 
-                    imagecopyresampled($img, $logoImg, $cx, $cy, 0, 0, $centerBoxSize, $centerBoxSize, $lw, $lh);
+                    // Draw circular white badge and primary-color border matching SVG & preview
+                    imagefilledellipse($img, $center, $center, $badgeRadius * 2, $badgeRadius * 2, $white);
+                    for ($b = 0; $b < $borderThickness; $b++) {
+                        imageellipse($img, $center, $center, ($badgeRadius * 2) - $b, ($badgeRadius * 2) - $b, $primary);
+                    }
+
+                    $logoBoxSize = (int)($badgeRadius * 1.35);
+                    $lx = (int)($center - ($logoBoxSize / 2));
+                    $ly = (int)($center - ($logoBoxSize / 2));
+
+                    imagecopyresampled($img, $logoImg, $lx, $ly, 0, 0, $logoBoxSize, $logoBoxSize, $lw, $lh);
                     imagedestroy($logoImg);
                 }
             }
@@ -542,15 +595,7 @@ class SellerQrCodeService
         $primaryColor = $qrCode->primary_color ?: $settings['primary_color'];
         $secondaryColor = $qrCode->secondary_color ?: $settings['secondary_color'];
 
-        $centerLogoPath = null;
-        if ($qrCode->center_logo_type === 'custom' && !empty($qrCode->center_logo)) {
-            $centerLogoPath = self::resolveLocalImagePath($qrCode->getRawOriginal('center_logo'));
-        } elseif ($qrCode->center_logo_type === 'store_logo' && $store && !empty($store->logo)) {
-            $centerLogoPath = self::resolveLocalImagePath($store->getRawOriginal('logo'));
-        } elseif ($qrCode->center_logo_type === 'platform_logo') {
-            $adminLogo = !empty($settings['center_logo']) ? $settings['center_logo'] : $settings['footer_logo'];
-            $centerLogoPath = self::resolveLocalImagePath($adminLogo);
-        }
+        $centerLogoPath = self::resolveCenterLogoPath($qrCode, $settings, $store);
 
         // Generate QR code base64 SVG
         $qrBase64 = self::generateQrBase64Svg($qrCode->qr_url, $primaryColor, 340, $centerLogoPath);

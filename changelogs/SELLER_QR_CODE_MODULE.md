@@ -353,4 +353,60 @@ Direct download endpoint for standee PDF, PNG, or SVG.
 - Returned `can_customize_colors`, `can_customize_logo`, `can_customize_slug`, and `catalog_base_url` in `SellerQrApiController::getMyQr()`.
 - Enforced admin restrictions server-side in `generateOrUpdate()`.
 
+---
 
+## 9. Updates & Bug Fixes (v3.2.5)
+
+### 9.1 Missing `Illuminate\Support\Str` Class Import in `SellerQrApiController`
+- **Problem**: When saving standee configuration (`/api/seller-qr/generate`), the API failed with:
+  `Class "App\Http\Controllers\Api\Str" not found At Line : 359`
+- **Root Cause**: `Str::before(...)` and `Str::slug(...)` were invoked without importing `use Illuminate\Support\Str;` in the file namespace.
+- **Solution**:
+  - Added `use Illuminate\Support\Str;` to imports in `SellerQrApiController.php`.
+
+### 9.2 Admin Panel Center Logo Preview Reactivity & "No Embedded Logo" Fix
+- **Problem**: In `seller_qr/settings.blade.php`, toggling "No Embedded Logo" (`none`) did not update or hide the center logo badge in the live standee mockup preview.
+- **Solution**:
+  - Added dynamic inline style `display: {{ ($settings['default_center_logo_type'] ?? 'platform_logo') === 'none' ? 'none' : 'flex' }};` to `#mockCenterLogo`.
+  - Added live jQuery change handlers for `input[name="seller_qr_default_center_logo_type"]` and file input `#seller_qr_center_logo` (via `FileReader`) to instantaneously reflect selection in the preview mockup.
+
+### 9.3 Unified Center Logo Resolution & Clean SVG Downloads
+- **Problem**: Redundant SVG handler block and inconsistent center logo fallback between SVG, PNG, and PDF formats.
+- **Solution**:
+  - Unified center logo resolution across SVG, PNG, and PDF formats:
+    - If `center_logo_type === 'none'`, strictly passes `null` to generate clean QR codes without logos.
+    - If `center_logo_type === 'platform_logo'`, prioritizes admin center logo with fallback to footer logo.
+  - Resolved undefined `$settings` variable in `SellerQrApiController::getStoreByQr()`.
+
+---
+
+## 10. Updates & Bug Fixes (v3.2.6)
+
+### 10.1 Embedded Logo Integration in SVG and PDF Standee Exports
+- **Problem**: In PDF and SVG export of the QR code standee, the embedded center logo was visible only in PNG export, but missing in SVG and PDF exports.
+- **Root Cause**:
+  - `simple-qrcode`'s `merge()` method internally only executes image merging when `format === 'png'` (`vendor/simplesoftwareio/simple-qrcode/src/Generator.php`). When generating SVG, `merge()` is completely ignored by the library.
+  - As a result, `generateRawQrSvg()` produced an SVG with no center logo.
+  - In turn, `renderStandeeHtml()` injected this raw SVG into the mPDF standee template via `$qrBase64`, causing the PDF export to also lack the embedded logo.
+- **Solution**:
+  - In `SellerQrCodeService::generateRawQrSvg()`, injected an SVG `<g id="qrCenterLogoBadge">` element right before `</svg>` containing:
+    - A circular white background badge: `<circle cx="..." cy="..." r="..." fill="#ffffff" stroke="$primaryColor" stroke-width="2.5" />`
+    - A base64-encoded vector `<image href="..." xlink:href="..." preserveAspectRatio="xMidYMid meet" />`
+  - This natively renders the center logo in SVG exports, PDF standee documents, and Flutter's `SvgPicture.string()` without any image quality degradation.
+
+### 10.2 Circular Badge Design Uniformity across PNG, SVG, and Previews
+- **Problem**: PNG export generated a flat rectangular center box with GD, while SVG and web/admin preview mockups featured circular badges.
+- **Solution**:
+  - Updated `generateQrPngWithGd()` to draw an antialiased circular white badge (`imagefilledellipse`) with a primary-color border (`imageellipse`) matching the SVG badge dimensions and live previews.
+  - Routed `generateRawQrPng()` directly through `generateQrPngWithGd()` to guarantee uniform look across all server environments regardless of whether Imagick is installed.
+
+### 10.3 Standee PDF Layout & Visual Alignment with Previews
+- **Problem**: In `standee_template.blade.php`, `.brand-badge` had white text on near-transparent background (`color: #ffffff; background: {{ $primaryColor }}15;`), making it invisible in PDFs. Also, the store card was missing the store logo/avatar shown in the Admin, Web, and Mobile live previews.
+- **Solution**:
+  - Fixed `.brand-badge` text color to `color: {{ $primaryColor }};`.
+  - Updated the store card inside `standee_template.blade.php` to include the store logo avatar on the left in a neat mPDF-compatible table layout matching the live preview mockup across Admin Panel, Web Frontend, and Flutter Mobile App.
+
+### 10.4 Centralized Center Logo Resolution Helper
+- **Solution**:
+  - Added `SellerQrCodeService::resolveCenterLogoPath(SellerQrCode $qrCode, ?array $settings = null, ?Store $store = null): ?string`.
+  - Replaced duplicate resolution logic across `SellerQrApiController::getMyQr()`, `SellerQrApiController::downloadStandee()`, and `SellerQrCodeService::renderStandeeHtml()`.
