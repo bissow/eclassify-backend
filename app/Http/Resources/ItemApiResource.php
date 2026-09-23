@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Models\City;
 use App\Models\Language;
 use App\Models\Setting;
+use App\Services\ContentFormatterService;
 use App\Services\CurrencyFormatterService;
 use App\Services\HelperService;
 use Carbon\Carbon;
@@ -81,7 +82,8 @@ class ItemApiResource extends ResourceCollection
             $city = $cityLookup[$item->city.'|'.$item->state] ?? null;
 
             $name = $item->name;
-            $description = $item->description;
+            $description = ContentFormatterService::cleanPlainText($item->description);
+            $descriptionJson = $item->description_json ?: $description;
 
             if ($item->relationLoaded('translations')) {
                 foreach ($item->translations as $t) {
@@ -91,7 +93,9 @@ class ItemApiResource extends ResourceCollection
                     if ($t->key === 'name') {
                         $name = $t->value;
                     } elseif ($t->key === 'description') {
-                        $description = $t->value;
+                        $description = ContentFormatterService::cleanPlainText($t->value);
+                    } elseif ($t->key === 'description_json') {
+                        $descriptionJson = $t->value;
                     }
                 }
             }
@@ -103,6 +107,9 @@ class ItemApiResource extends ResourceCollection
             $translation = [
                 'name' => $name,
                 'description' => $description,
+                'description_json' => $descriptionJson,
+                'descriptionJson' => $descriptionJson,
+                'formatted_description' => ContentFormatterService::formatItemDescription($descriptionJson ?: $description),
                 'city' => $cityName,
                 'state' => $stateName,
                 'country' => $countryName,
@@ -133,6 +140,11 @@ class ItemApiResource extends ResourceCollection
                     'slug' => $item->slug,
                     'name' => $name,
                     'description' => $description,
+                    'description_json' => $descriptionJson,
+                    'descriptionJson' => $descriptionJson,
+                    'formatted_description' => ContentFormatterService::formatItemDescription($descriptionJson ?: $description),
+                    'extracted_contacts' => ContentFormatterService::extractIndianMobileNumbers($descriptionJson ?: $description),
+                    'extracted_links' => ContentFormatterService::extractUrls($descriptionJson ?: $description),
                     'image' => $item->image,
                     'price' => $item->price,
                     'formatted_price' => $formattedPrice,
